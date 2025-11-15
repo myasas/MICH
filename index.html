@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Colleagues Timezone Dashboard</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    background: #fff;
+    color: #222;
+    margin: 0;
+    padding: 1rem;
+    text-align: center;
+  }
+  h2 { margin-top: 1rem; }
+  #sliderContainer { margin-bottom: 2rem; }
+  input[type="range"] { width: 90%; max-width: 500px; }
+  #helper { font-size: 0.9rem; color: #555; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+  .availability {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .box {
+    flex: 1 1 300px;
+    border: 1px solid #ccc;
+    border-radius: 0.8rem;
+    padding: 1rem;
+    text-align: left;
+  }
+  button {
+    margin-top: 1rem;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: #007aff;
+    color: white;
+    cursor: pointer;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  button:hover { background: #005ec2; }
+  .countries { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; }
+  .country {
+    border: 1px solid #ccc;
+    border-radius: 1rem;
+    padding: 1rem;
+    width: 220px;
+    background: #fafafa;
+    transition: background 0.3s, color 0.3s;
+  }
+  .country.sleeping { background: #444; color: #eee; }
+  .flag { font-size: 1.5rem; font-weight: bold; }
+  .time { font-size: 1.2rem; margin-top: 0.3rem; }
+  .friend { font-size: 0.9rem; margin-top: 0.25rem; }
+  .daydiff { font-size: 0.8rem; color: #888; }
+</style>
+</head>
+<body>
+<h1>🌏 Colleagues Timezone Dashboard</h1>
+
+<div id="sliderContainer">
+  <p id="helper">Drag the slider to shift Sri Lanka time and see corresponding times in other countries.</p>
+  <input type="range" id="timeSlider" min="0" max="1439" step="15" />
+  <p id="sliderTime"></p>
+</div>
+
+<div class="availability">
+  <div class="box">
+    <h2>✅ Available (<span id="countAvailable">0</span>)</h2>
+    <div id="availableList"></div>
+  </div>
+  <div class="box">
+    <h2>😴 Unavailable (<span id="countUnavailable">0</span>)</h2>
+    <div id="unavailableList"></div>
+  </div>
+</div>
+
+<button id="copyButton">📋 Copy Available Colleagues</button>
+
+<div id="countries" class="countries"></div>
+
+<script>
+const colleagues = [
+  { name: "Isuru", flag: "🇨🇦", tz: "America/Toronto" },
+  { name: "Dilshan", flag: "🇬🇧", tz: "Europe/London" },
+  { name: "Jagath", flag: "🇬🇧", tz: "Europe/London" },
+  { name: "Nisal (Blackburn)", flag: "🇬🇧", tz: "Europe/London" },
+  { name: "Kapila", flag: "🇬🇧", tz: "Europe/London" },
+  { name: "Thara", flag: "🇬🇧", tz: "Europe/London" },
+  { name: "Channa", flag: "🇳🇱", tz: "Europe/Amsterdam" },
+  { name: "Charmi", flag: "🇳🇱", tz: "Europe/Amsterdam" },
+  { name: "Prabod (Almere-Stad, Flevoland)", flag: "🇳🇱", tz: "Europe/Amsterdam" },
+  { name: "Hiflan", flag: "🇩🇪", tz: "Europe/Berlin" },
+  { name: "Chinthaka", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Kasun", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Thimitha", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Randika", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Priyashani", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Anuradha", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Nadun", flag: "🇱🇰", tz: "Asia/Colombo" },
+  { name: "Pubudu", flag: "🇦🇺", tz: "Australia/Melbourne" },
+  { name: "Yasas", flag: "🇦🇺", tz: "Australia/Melbourne" }
+];
+
+const countryNames = {
+  "America/Toronto": "🇨🇦 Toronto",
+  "Europe/London": "🇬🇧 United Kingdom",
+  "Europe/Amsterdam": "🇳🇱 Netherlands",
+  "Europe/Berlin": "🇩🇪 Germany",
+  "Asia/Colombo": "🇱🇰 Sri Lanka",
+  "Australia/Melbourne": "🇦🇺 Melbourne"
+};
+
+function getEmoji(hour) {
+  if (hour >= 5 && hour < 12) return "🌅";
+  if (hour >= 12 && hour < 17) return "🌞";
+  if (hour >= 17 && hour < 22) return "🌇";
+  return "🌙";
+}
+
+function isSleeping(hour) {
+  return hour >= 22 || hour < 6;
+}
+
+function render(timeOffsetMinutes = 0) {
+  const base = new Date();
+  const slDate = new Date(base.toLocaleString("en-US", { timeZone: "Asia/Colombo" }));
+  const slDay = slDate.getDate();
+
+  const countriesDiv = document.getElementById("countries");
+  countriesDiv.innerHTML = "";
+
+  const available = [];
+  const unavailable = [];
+
+  const grouped = {};
+  for (const f of colleagues) {
+    if (!grouped[f.tz]) grouped[f.tz] = [];
+    grouped[f.tz].push(f);
+  }
+
+  for (const [tz, group] of Object.entries(grouped)) {
+    for (const g of group) {
+      const now = new Date(base.getTime() + timeOffsetMinutes * 60000);
+      const options = { timeZone: g.tz, hour: "2-digit", minute: "2-digit", hour12: false };
+      const formatter = new Intl.DateTimeFormat("en-US", options);
+      const formattedTime = formatter.format(now);
+      const hour24 = parseInt(formattedTime.split(":")[0], 10);
+      const sleeping = isSleeping(hour24);
+      const emoji = getEmoji(hour24);
+      const displayTime = new Intl.DateTimeFormat("en-US", {
+        timeZone: g.tz, hour: "2-digit", minute: "2-digit", hour12: true
+      }).format(now);
+
+      // Get day difference vs Sri Lanka
+      const localDate = new Date(now.toLocaleString("en-US", { timeZone: g.tz }));
+      const localDay = localDate.getDate();
+      let dayDiff = "";
+      if (localDay > slDay) dayDiff = "+1d";
+      else if (localDay < slDay) dayDiff = "-1d";
+
+      const countryDivId = tz.replace(/[^a-zA-Z]/g, "");
+      let countryDiv = document.getElementById(countryDivId);
+      if (!countryDiv) {
+        countryDiv = document.createElement("div");
+        countryDiv.id = countryDivId;
+        countryDiv.className = "country";
+        countriesDiv.appendChild(countryDiv);
+      }
+      countryDiv.className = "country" + (sleeping ? " sleeping" : "");
+      countryDiv.innerHTML = `<div class="flag">${countryNames[tz]} <span class="daydiff">${dayDiff}</span></div>
+                              <div class="time">${displayTime}</div>
+                              <div class="friend">${group.map(f=>f.name).join("<br>")}</div>`;
+
+      const entry = `${g.flag} ${g.name} — ${displayTime} ${emoji}${dayDiff ? " " + dayDiff : ""}`;
+      if (sleeping) unavailable.push(entry);
+      else available.push(entry);
+    }
+  }
+
+  document.getElementById("availableList").innerHTML = available.join("<br>");
+  document.getElementById("unavailableList").innerHTML = unavailable.join("<br>");
+  document.getElementById("countAvailable").innerText = available.length;
+  document.getElementById("countUnavailable").innerText = unavailable.length;
+
+  const sliderLabel = document.getElementById("sliderTime");
+  const ref = new Date(base.getTime() + timeOffsetMinutes * 60000);
+  const slFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Colombo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  });
+  sliderLabel.textContent = `🇱🇰 Sri Lanka Time: ${slFormatter.format(ref)}`;
+
+  window.currentData = { available, unavailable };
+}
+
+function setup() {
+  const slider = document.getElementById("timeSlider");
+  slider.addEventListener("input", () => render(parseInt(slider.value)));
+  document.getElementById("copyButton").addEventListener("click", () => {
+    const { available, unavailable } = window.currentData;
+    const text = `${available.length} out of ${colleagues.length} colleagues are available.\n\nAvailable:\n${available.join("\n")}\n\nUnavailable:\n${unavailable.join("\n")}`;
+    navigator.clipboard.writeText(text);
+    alert("Copied!");
+  });
+  render();
+  setInterval(() => render(parseInt(document.getElementById("timeSlider").value)), 300000);
+}
+
+setup();
+</script>
+</body>
+</html>
